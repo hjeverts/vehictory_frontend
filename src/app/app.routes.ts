@@ -7,6 +7,7 @@ import { UserManagement } from './features/admin/user-management/user-management
 import { VehicleList } from './features/vehicles/vehicle-list/vehicle-list';
 import { VehicleDetail } from './features/vehicles/vehicle-detail/vehicle-detail';
 import { Profile } from './features/profile/profile';
+import { NotFound } from './features/not-found/not-found';
 import { authGuard } from './core/guards/auth-guard';
 
 export const routes: Routes = [
@@ -19,4 +20,5 @@ export const routes: Routes = [
   { path: 'profile', component: Profile, canActivate: [authGuard] },
   { path: 'vehicles', component: VehicleList, canActivate: [authGuard] },
   { path: 'vehicles/:id', component: VehicleDetail, canActivate: [authGuard] },
+  { path: '**', component: NotFound },
 ];
