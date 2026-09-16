@@ -29,6 +29,26 @@
     </form>
   </section>
 
+  <section>
+    <h2>Actieve sessies</h2>
+    <p>Apparaten/browsers die momenteel zijn ingelogd op je account.</p>
+    <ul class="sessions">
+      @for (session of sessions(); track session.id) {
+        <li>
+          <span>
+            {{ session.userAgent ?? 'Onbekend apparaat' }}
+            @if (session.isCurrent) { <strong>(dit apparaat)</strong> }
+            <br />
+            <small>Laatst actief: {{ (session.lastUsedAt ?? session.createdAt) | date: 'medium' }}</small>
+          </span>
+          @if (!session.isCurrent) {
+            <button type="button" (click)="revokeSession(session.id)">Uitloggen</button>
+          }
+        </li>
+      }
+    </ul>
+  </section>
+
   @if (message(); as text) { <p class="message">{{ text }}</p> }
   @if (error(); as text) { <p class="error">{{ text }}</p> }
 </div>

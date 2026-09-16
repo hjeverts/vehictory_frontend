@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { Observable, finalize, shareReplay, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface AuthResponse {
@@ -20,6 +20,16 @@ export interface CurrentUser {
 
 export interface ProfileResponse extends CurrentUser {}
 
+export interface SessionInfo {
+  id: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt: string;
+  userAgent?: string;
+  createdByIp?: string;
+  isCurrent: boolean;
+}
+
 const TOKEN_KEY = 'vehictory_token';
 const USER_KEY = 'vehictory_user';
 
@@ -27,6 +37,11 @@ const USER_KEY = 'vehictory_user';
 export class AuthService {
   // Signal zodat components reactief kunnen tonen of iemand ingelogd is.
   readonly currentUser = signal<CurrentUser | null>(this.loadStoredUser());
+
+  // De refresh-token zelf zien we nooit (httpOnly cookie); deze deelt één lopende
+  // ververs-aanroep tussen requests die tegelijk een verlopen access-token tegenkomen,
+  // zodat de auth-interceptor niet per ongeluk meerdere keren tegelijk ververst.
+  private refreshInProgress$: Observable<AuthResponse> | null = null;
 
   constructor(private http: HttpClient) {}
 
@@ -44,6 +59,27 @@ export class AuthService {
 
   getProfile(): Observable<ProfileResponse> {
     return this.http.get<ProfileResponse>(`${environment.apiUrl}/auth/profile`);
+  }
+
+  refresh(): Observable<AuthResponse> {
+    if (!this.refreshInProgress$) {
+      this.refreshInProgress$ = this.http
+        .post<AuthResponse>(`${environment.apiUrl}/auth/refresh`, {}, { withCredentials: true })
+        .pipe(
+          tap((res) => this.storeSession(res)),
+          shareReplay(1),
+          finalize(() => (this.refreshInProgress$ = null)),
+        );
+    }
+    return this.refreshInProgress$;
+  }
+
+  getSessions(): Observable<SessionInfo[]> {
+    return this.http.get<SessionInfo[]>(`${environment.apiUrl}/auth/sessions`);
+  }
+
+  revokeSession(id: string): Observable<void> {
+    return this.http.delete<void>(`${environment.apiUrl}/auth/sessions/${id}`);
   }
 
   updateProfile(email: string, name: string): Observable<AuthResponse> {
@@ -77,6 +113,10 @@ export class AuthService {
   }
 
   logout(): void {
+    // Trekt de refresh-token server-side in (best effort; lokaal loggen we hoe dan ook uit).
+    this.http
+      .post<void>(`${environment.apiUrl}/auth/logout`, {}, { withCredentials: true })
+      .subscribe({ error: () => {} });
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     this.currentUser.set(null);

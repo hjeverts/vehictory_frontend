@@ -2,7 +2,7 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { AuthService } from '../../core/services/auth';
+import { AuthService, SessionInfo } from '../../core/services/auth';
 
 @Component({
   selector: 'app-profile',
@@ -18,6 +18,7 @@ export class Profile implements OnInit {
   newPassword = '';
   readonly error = signal<string | null>(null);
   readonly message = signal<string | null>(null);
+  readonly sessions = signal<SessionInfo[]>([]);
 
   constructor(readonly authService: AuthService) {}
 
@@ -26,6 +27,15 @@ export class Profile implements OnInit {
       this.name = profile.name;
       this.email = profile.email;
     });
+    this.loadSessions();
+  }
+
+  loadSessions(): void {
+    this.authService.getSessions().subscribe((sessions) => this.sessions.set(sessions));
+  }
+
+  revokeSession(id: string): void {
+    this.authService.revokeSession(id).subscribe(() => this.loadSessions());
   }
 
   saveProfile(): void {
