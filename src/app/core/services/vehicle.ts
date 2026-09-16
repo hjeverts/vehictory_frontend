@@ -18,6 +18,12 @@ export class VehicleService {
     return this.http.get<Vehicle>(`${this.baseUrl}/${id}`);
   }
 
+  // Blob-fetch i.p.v. een kale <img src>: dit endpoint staat achter JWT-auth, die de
+  // interceptor alleen aan HttpClient-requests toevoegt, niet aan directe browsernavigatie.
+  getPhoto(id: number): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/${id}/photo`, { responseType: 'blob' });
+  }
+
   create(vehicle: VehicleRequest): Observable<Vehicle> {
     return this.http.post<Vehicle>(this.baseUrl, vehicle);
   }

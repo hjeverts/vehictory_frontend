@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -31,7 +31,7 @@ type FuelEntryWithVerbruik = FuelEntry & {
   templateUrl: './vehicle-detail.html',
   styleUrl: './vehicle-detail.scss',
 })
-export class VehicleDetail implements OnInit {
+export class VehicleDetail implements OnInit, OnDestroy {
   vehicleId!: number;
   readonly fuelTypes = [
     'Benzine E10 (Euro 95)',
@@ -45,6 +45,8 @@ export class VehicleDetail implements OnInit {
     'Elektrisch',
   ];
   readonly vehicle = signal<Vehicle | null>(null);
+  readonly photoUrl = signal<string | null>(null);
+  private photoObjectUrl: string | null = null;
   readonly stats = signal<VehicleStats | null>(null);
   readonly fuelEntries = signal<FuelEntry[]>([]);
   readonly fuelEntriesWithVerbruik = computed<FuelEntryWithVerbruik[]>(() => {
@@ -167,6 +169,10 @@ export class VehicleDetail implements OnInit {
     this.maintenanceService.getTypes().subscribe((types) => this.maintenanceTypes.set(types));
   }
 
+  ngOnDestroy(): void {
+    this.revokePhotoObjectUrl();
+  }
+
   load(): void {
     this.vehicleService.getById(this.vehicleId).subscribe((v) => {
       this.vehicle.set(v);
@@ -177,6 +183,12 @@ export class VehicleDetail implements OnInit {
         bouwjaar: v.bouwjaar,
         aankoopdatum: v.aankoopdatum,
       };
+      // Toon meteen de kleine thumbnail (komt al inline mee); de scherpe foto wordt
+      // lazy nagehaald via een los endpoint zodat de detailpagina niet 850KB+ JSON laadt.
+      this.setPhotoUrl(v.fotoThumbnailDataUrl ?? null);
+      if (v.fotoThumbnailDataUrl) {
+        this.vehicleService.getPhoto(this.vehicleId).subscribe((blob) => this.setPhotoBlob(blob));
+      }
       if (v.isOwner) {
         this.vehicleService.getShares(this.vehicleId).subscribe((shares) => this.shares.set(shares));
       }
@@ -184,6 +196,24 @@ export class VehicleDetail implements OnInit {
     this.vehicleService.getStats(this.vehicleId).subscribe((s) => this.stats.set(s));
     this.fuelEntryService.getAll(this.vehicleId).subscribe((entries) => this.fuelEntries.set(entries));
     this.maintenanceService.getAll(this.vehicleId).subscribe((entries) => this.maintenanceEntries.set(entries));
+  }
+
+  private setPhotoUrl(url: string | null): void {
+    this.revokePhotoObjectUrl();
+    this.photoUrl.set(url);
+  }
+
+  private setPhotoBlob(blob: Blob): void {
+    this.revokePhotoObjectUrl();
+    this.photoObjectUrl = URL.createObjectURL(blob);
+    this.photoUrl.set(this.photoObjectUrl);
+  }
+
+  private revokePhotoObjectUrl(): void {
+    if (this.photoObjectUrl) {
+      URL.revokeObjectURL(this.photoObjectUrl);
+      this.photoObjectUrl = null;
+    }
   }
 
   addFuelEntry(): void {
@@ -323,6 +353,7 @@ export class VehicleDetail implements OnInit {
     this.vehicleService.updatePhoto(this.vehicleId, file).subscribe({
       next: (vehicle) => {
         this.vehicle.set(vehicle);
+        this.setPhotoBlob(file);
         this.vehicleMessage.set('Voertuigfoto bijgewerkt.');
       },
       error: (err) => this.vehicleError.set(err.error ?? 'Voertuigfoto uploaden mislukt.'),

@@ -7,7 +7,6 @@ export interface Vehicle {
   aankoopdatum?: string;
   isOwner: boolean;
   eigenaarNaam: string;
-  fotoDataUrl?: string;
   fotoThumbnailDataUrl?: string;
 }
 

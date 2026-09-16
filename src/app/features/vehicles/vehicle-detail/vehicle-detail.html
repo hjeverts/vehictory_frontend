@@ -7,7 +7,7 @@
   }
   @if (v.isOwner) {
     <section class="vehicle-settings">
-      @if (v.fotoDataUrl; as photo) {
+      @if (photoUrl(); as photo) {
         <img class="vehicle-photo" [src]="photo" [alt]="'Foto van ' + v.naam" />
       }
       @if (!editingVehicle()) {
