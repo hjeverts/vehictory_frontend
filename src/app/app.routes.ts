@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { Home } from './features/home/home';
 import { Login } from './features/auth/login/login';
 import { Register } from './features/auth/register/register';
 import { PasswordReset } from './features/auth/password-reset/password-reset';
@@ -11,7 +12,7 @@ import { NotFound } from './features/not-found/not-found';
 import { authGuard } from './core/guards/auth-guard';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'vehicles', pathMatch: 'full' },
+  { path: '', component: Home, pathMatch: 'full' },
   { path: 'login', component: Login },
   { path: 'register', component: Register },
   { path: 'password-reset', component: PasswordReset },

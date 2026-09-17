@@ -1,0 +1,42 @@
+<section class="hero">
+  <img src="/icons/icon-192.png" alt="" width="56" height="56" class="hero-logo" />
+  <h1>Vehictory</h1>
+  <p class="tagline">Voertuigen, brandstof, onderhoud en statistieken bijhouden.</p>
+  <p class="lead">
+    Vehictory houdt per voertuig bij hoeveel brandstof je tankt, wat onderhoud kost en hoe je
+    verbruik zich ontwikkelt. Je ziet trends in duidelijke grafieken en kunt een voertuig delen
+    met een partner, ouder of monteur zonder je account af te staan.
+  </p>
+
+  @if (authService.currentUser()) {
+    <a routerLink="/vehicles" class="cta-button">Naar mijn voertuigen</a>
+  } @else {
+    <div class="cta-row">
+      <a routerLink="/register" class="cta-button">Gratis account maken</a>
+      <a routerLink="/login" class="cta-button secondary">Inloggen</a>
+    </div>
+  }
+</section>
+
+<section class="features">
+  <div class="feature">
+    <h2>Brandstofverbruik</h2>
+    <p>Registreer elke tankbeurt en zie direct je verbruik per kilometer, op volgorde van
+      kilometerstand in plaats van datum.</p>
+  </div>
+  <div class="feature">
+    <h2>Onderhoud</h2>
+    <p>Log onderhoudsbeurten met kosten en type, zodat je nooit meer een servicebeurt of APK
+      vergeet.</p>
+  </div>
+  <div class="feature">
+    <h2>Statistieken</h2>
+    <p>Bekijk overzichtelijke grafieken van kosten en verbruik per voertuig, over willekeurige
+      periodes.</p>
+  </div>
+  <div class="feature">
+    <h2>Delen</h2>
+    <p>Geef iemand anders leestoegang tot een voertuig, zodat die zelf tankbeurten en onderhoud
+      kan bijhouden.</p>
+  </div>
+</section>
