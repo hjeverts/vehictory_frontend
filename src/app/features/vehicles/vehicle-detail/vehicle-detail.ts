@@ -141,6 +141,43 @@ export class VehicleDetail implements OnInit, OnDestroy {
       }],
     };
   });
+  readonly costPeriod = signal<'maand' | 'jaar'>('maand');
+  /** Werkelijk gemaakte kosten per periode (geen extrapolatie), per categorie en in totaal. */
+  readonly costChartData = computed<ChartConfiguration<'line'>['data']>(() => {
+    const perMonth = this.costPeriod() === 'maand';
+    const periodKey = (datum: string) => (perMonth ? datum.slice(0, 7) : datum.slice(0, 4));
+    const sumPerPeriod = (items: { datum: string; bedrag: number }[]) => {
+      const totals = new Map<string, number>();
+      for (const item of items) totals.set(periodKey(item.datum), (totals.get(periodKey(item.datum)) ?? 0) + item.bedrag);
+      return totals;
+    };
+    const brandstof = sumPerPeriod(this.fuelEntries().map((entry) => ({ datum: entry.datum, bedrag: entry.bedrag })));
+    const onderhoud = sumPerPeriod(
+      this.maintenanceEntries()
+        .filter((entry) => entry.kosten != null)
+        .map((entry) => ({ datum: entry.datum, bedrag: entry.kosten! })),
+    );
+    const vasteLasten = sumPerPeriod(this.recurringPayments());
+    const keys = this.periodRange([...brandstof.keys(), ...onderhoud.keys(), ...vasteLasten.keys()], perMonth);
+    const series = (totals: Map<string, number>) => keys.map((key) => totals.get(key) ?? 0);
+    const dataset = (label: string, data: number[], color: string, fill = false) => ({
+      label,
+      data,
+      borderColor: color,
+      backgroundColor: fill ? `${color}26` : color,
+      fill,
+      tension: 0.25,
+    });
+    return {
+      labels: keys.map((key) => (perMonth ? this.formatMonth(key) : key)),
+      datasets: [
+        dataset('Totaal (EUR)', keys.map((key) => (brandstof.get(key) ?? 0) + (onderhoud.get(key) ?? 0) + (vasteLasten.get(key) ?? 0)), '#0f766e', true),
+        dataset('Brandstof (EUR)', series(brandstof), '#d97706'),
+        dataset('Onderhoud (EUR)', series(onderhoud), '#2563eb'),
+        dataset('Vaste lasten (EUR)', series(vasteLasten), '#7c3aed'),
+      ],
+    };
+  });
   readonly lineChartOptions: ChartConfiguration<'line'>['options'] = {
     responsive: true,
     maintainAspectRatio: false,

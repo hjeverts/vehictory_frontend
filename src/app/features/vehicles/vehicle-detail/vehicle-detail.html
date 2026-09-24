@@ -89,7 +89,6 @@
       <div><strong>{{ s.onderhoudsKosten | number: '1.2-2' }}</strong><span>Onderhoudskosten (&euro;)</span></div>
       <div><strong>{{ s.vasteLasten | number: '1.2-2' }}</strong><span>Vaste lasten (&euro;)</span></div>
       <div><strong>{{ s.kostenPerKm !== null ? (s.kostenPerKm | number: '1.2-2') : '–' }}</strong><span>Kosten per km (&euro;)</span></div>
-      <div><strong>{{ s.kostenPerJaar !== null ? (s.kostenPerJaar | number: '1.0-0') : '–' }}</strong><span>Kosten per jaar (&euro;)</span></div>
       <div><strong>{{ s.totaalLiters | number: '1.1-1' }}</strong><span>Totaal getankt (L)</span></div>
       <div><strong>{{ s.gemiddeldeVerbruikL100km | number: '1.1-1' }}</strong><span>L/100km</span></div>
       <div><strong>{{ s.gemiddeldePrijsPerLiter | number: '1.3-3' }}</strong><span>&euro;/L gemiddeld</span></div>
@@ -127,6 +126,18 @@
       </div>
       <div class="chart-container">
         <canvas baseChart type="line" [data]="distanceChartData()" [options]="lineChartOptions"></canvas>
+      </div>
+    </article>
+    <article class="chart-card chart-card--wide">
+      <div class="chart-header">
+        <h2>Kosten per {{ costPeriod() }}</h2>
+        <div class="period-toggle" role="group" aria-label="Periode">
+          <button type="button" [class.active]="costPeriod() === 'maand'" [attr.aria-pressed]="costPeriod() === 'maand'" (click)="costPeriod.set('maand')">Maand</button>
+          <button type="button" [class.active]="costPeriod() === 'jaar'" [attr.aria-pressed]="costPeriod() === 'jaar'" (click)="costPeriod.set('jaar')">Jaar</button>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas baseChart type="line" [data]="costChartData()" [options]="lineChartOptions"></canvas>
       </div>
     </article>
   </section>

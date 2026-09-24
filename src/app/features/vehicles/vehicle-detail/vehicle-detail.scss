@@ -84,6 +84,11 @@
   }
 }
 
+// Vijfde grafiek over de volle breedte, zodat het 2×2-raster erboven intact blijft.
+.chart-card--wide {
+  grid-column: 1 / -1;
+}
+
 .chart-header {
   display: flex;
   flex-wrap: wrap;

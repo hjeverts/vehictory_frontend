@@ -100,7 +100,6 @@ export interface VehicleStats {
   /** Hoogste − laagste km-stand van de tankbeurten. */
   totaleAfstandKm: number;
   kostenPerKm: number | null;
-  kostenPerJaar: number | null;
 }
 
 export interface AdminUser {
