@@ -5,12 +5,28 @@ export interface Vehicle {
   type?: string;
   bouwjaar?: number;
   aankoopdatum?: string;
+  /** Total Cost of Ownership: bedragen in euro's, allemaal optioneel. */
+  aanschafprijs?: number | null;
+  /** Minimale restwaarde; ondergrens van de lineaire afschrijving. */
+  restwaarde?: number | null;
+  /** Degressief: per leeftijd (jaren sinds bouwjaar) een percentage van de resterende waarde per maand. */
+  afschrijvingstabel: AfschrijvingsStaffel[];
+  verkoopdatum?: string | null;
+  /** Werkelijke verkoopprijs; na verkoop is de afschrijving aanschafprijs − verkoopprijs. */
+  verkoopprijs?: number | null;
   isOwner: boolean;
   eigenaarNaam: string;
   fotoThumbnailDataUrl?: string;
 }
 
-export type VehicleRequest = Omit<Vehicle, 'id' | 'isOwner' | 'eigenaarNaam'>;
+export interface AfschrijvingsStaffel {
+  /** Vanaf deze leeftijd in jaren (t.o.v. het bouwjaar) geldt dit percentage, tot de volgende staffel. */
+  vanafLeeftijd: number;
+  /** Bv. 1.35 voor 1,35% van de resterende waarde per maand. */
+  percentagePerMaand: number;
+}
+
+export type VehicleRequest = Omit<Vehicle, 'id' | 'isOwner' | 'eigenaarNaam' | 'fotoThumbnailDataUrl'>;
 
 export interface VehicleShare {
   userId: string;
@@ -88,11 +104,15 @@ export type RecurringCostRequest = Omit<
 
 export interface VehicleStats {
   vehicleId: number;
-  /** Brandstof + onderhoud + vaste lasten t/m vandaag. */
+  /** Total Cost of Ownership: brandstof + onderhoud + vaste lasten t/m vandaag + afschrijving. */
   totaleKosten: number;
   brandstofKosten: number;
   onderhoudsKosten: number;
   vasteLasten: number;
+  /** Per maand het percentage bij de leeftijd over de resterende waarde tot de restwaarde, of na verkoop aanschafprijs − verkoopprijs. */
+  afschrijving: number;
+  /** Aanschafprijs − afschrijving (of de verkoopprijs); null zonder aanschafprijs. */
+  boekwaarde: number | null;
   totaalLiters: number;
   gemiddeldeVerbruikL100km: number;
   gemiddeldePrijsPerLiter: number;

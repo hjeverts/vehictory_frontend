@@ -2,6 +2,9 @@
   <a routerLink="/vehicles">&larr; Terug naar voertuigen</a>
   <h1>{{ v.naam }}</h1>
   <p>{{ v.merk }} {{ v.type }}</p>
+  @if (v.verkoopdatum) {
+    <p class="sold-badge">Verkocht op {{ v.verkoopdatum }}</p>
+  }
   @if (!v.isOwner) {
     <p class="shared-badge">Gedeeld door {{ v.eigenaarNaam }}</p>
   }
@@ -14,7 +17,21 @@
         <dl class="vehicle-summary">
           @if (v.bouwjaar) { <div><dt>Bouwjaar</dt><dd>{{ v.bouwjaar }}</dd></div> }
           @if (v.aankoopdatum) { <div><dt>Aankoopdatum</dt><dd>{{ v.aankoopdatum }}</dd></div> }
+          @if (v.aanschafprijs != null) { <div><dt>Aanschafprijs</dt><dd>&euro; {{ v.aanschafprijs | number: '1.2-2' }}</dd></div> }
+          @if (v.restwaarde != null) { <div><dt>Minimale restwaarde</dt><dd>&euro; {{ v.restwaarde | number: '1.2-2' }}</dd></div> }
+          @if (currentDepreciation(v); as huidig) {
+            <div>
+              <dt>Afschrijving</dt>
+              <dd>
+                {{ huidig.percentagePerMaand | number: '1.0-2' }}% per maand bij {{ huidig.leeftijd }} jaar oud
+                (&asymp; {{ yearlyDepreciation(huidig.percentagePerMaand) | number: '1.0-1' }}% per jaar)
+              </dd>
+            </div>
+          }
+          @if (v.verkoopdatum) { <div><dt>Verkoopdatum</dt><dd>{{ v.verkoopdatum }}</dd></div> }
+          @if (v.verkoopprijs != null) { <div><dt>Verkoopprijs</dt><dd>&euro; {{ v.verkoopprijs | number: '1.2-2' }}</dd></div> }
         </dl>
+        @for (warning of depreciationWarnings(v); track warning) { <p class="warning">{{ warning }}</p> }
         <button type="button" (click)="editVehicleForm()">Voertuiggegevens bewerken</button>
       } @else {
         <label>Voertuigfoto <input type="file" accept="image/jpeg,image/png,image/webp" (change)="uploadVehiclePhoto($event)" /></label>
@@ -25,6 +42,47 @@
           <label><span>Type</span><input name="vehicleType" [(ngModel)]="editVehicle.type" /></label>
           <label><span>Bouwjaar</span><input type="number" name="vehicleYear" [(ngModel)]="editVehicle.bouwjaar" /></label>
           <label><span>Aankoopdatum</span><input type="date" name="vehiclePurchaseDate" [(ngModel)]="editVehicle.aankoopdatum" /></label>
+          <label><span>Aanschafprijs (&euro;)</span><input type="number" step="0.01" min="0" name="vehiclePurchasePrice" [(ngModel)]="editVehicle.aanschafprijs" /></label>
+          <label><span>Minimale restwaarde (&euro;)</span><input type="number" step="0.01" min="0" name="vehicleResidualValue" [(ngModel)]="editVehicle.restwaarde" /></label>
+          <label><span>Verkoopdatum</span><input type="date" name="vehicleSaleDate" [(ngModel)]="editVehicle.verkoopdatum" /></label>
+          <label><span>Verkoopprijs (&euro;)</span><input type="number" step="0.01" min="0" name="vehicleSalePrice" [(ngModel)]="editVehicle.verkoopprijs" /></label>
+          <fieldset class="depreciation-table">
+            <legend>Afschrijving per leeftijd</legend>
+            <label>
+              <span>Template</span>
+              <select name="depreciationTemplate" [ngModel]="depreciationTemplateName()" (ngModelChange)="applyDepreciationTemplate($event)">
+                @for (template of depreciationTemplates; track template.naam) {
+                  <option [value]="template.naam">{{ template.naam }}</option>
+                }
+                <option value="">Eigen tabel</option>
+                <option value="geen">Geen afschrijving</option>
+              </select>
+            </label>
+            @if (editVehicle.afschrijvingstabel.length > 0) {
+              <table>
+                <thead>
+                  <tr><th>Vanaf leeftijd (jaar)</th><th>% per maand</th><th>&asymp; % per jaar</th><th></th></tr>
+                </thead>
+                <tbody>
+                  @for (staffel of editVehicle.afschrijvingstabel; track $index) {
+                    <tr>
+                      <td><input type="number" min="0" step="1" [name]="'staffelLeeftijd' + $index" [(ngModel)]="staffel.vanafLeeftijd" aria-label="Vanaf leeftijd in jaren" required /></td>
+                      <td><input type="number" min="0" max="99.99" step="0.01" [name]="'staffelPercentage' + $index" [(ngModel)]="staffel.percentagePerMaand" aria-label="Percentage per maand" required /></td>
+                      <td>{{ yearlyDepreciation(staffel.percentagePerMaand) | number: '1.0-1' }}</td>
+                      <td><button type="button" (click)="removeStaffel($index)" title="Regel verwijderen">×</button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+            <button type="button" (click)="addStaffel()">+ Regel toevoegen</button>
+            @for (warning of depreciationWarnings(editVehicle); track warning) { <p class="warning">{{ warning }}</p> }
+          </fieldset>
+          <p class="form-hint">
+            De leeftijd is het jaar min het bouwjaar. Elke volle maand sinds de aankoopdatum gaat het percentage dat bij
+            die leeftijd hoort van de dan resterende waarde af, tot de minimale restwaarde. Pas het template gerust aan. Na verkoop telt het
+            werkelijke waardeverlies (aanschafprijs &minus; verkoopprijs) mee en eindigen lopende vaste lasten op de verkoopdatum.
+          </p>
           <button type="submit">Opslaan</button>
           <button type="button" (click)="cancelEditVehicle()">Annuleren</button>
         </form>
@@ -88,6 +146,10 @@
       <div><strong>{{ s.brandstofKosten | number: '1.2-2' }}</strong><span>Brandstofkosten (&euro;)</span></div>
       <div><strong>{{ s.onderhoudsKosten | number: '1.2-2' }}</strong><span>Onderhoudskosten (&euro;)</span></div>
       <div><strong>{{ s.vasteLasten | number: '1.2-2' }}</strong><span>Vaste lasten (&euro;)</span></div>
+      <div><strong>{{ s.afschrijving | number: '1.2-2' }}</strong><span>Afschrijving (&euro;)</span></div>
+      @if (s.boekwaarde !== null) {
+        <div><strong>{{ s.boekwaarde | number: '1.2-2' }}</strong><span>{{ v.verkoopprijs != null ? 'Verkoopprijs' : 'Huidige waarde' }} (&euro;)</span></div>
+      }
       <div><strong>{{ s.kostenPerKm !== null ? (s.kostenPerKm | number: '1.2-2') : '–' }}</strong><span>Kosten per km (&euro;)</span></div>
       <div><strong>{{ s.totaalLiters | number: '1.1-1' }}</strong><span>Totaal getankt (L)</span></div>
       <div><strong>{{ s.gemiddeldeVerbruikL100km | number: '1.1-1' }}</strong><span>L/100km</span></div>

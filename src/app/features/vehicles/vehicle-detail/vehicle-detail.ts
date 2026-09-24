@@ -31,6 +31,13 @@ import {
   VehicleShare,
   VehicleStats,
 } from '../../../core/models/models';
+import {
+  DEFAULT_DEPRECIATION_TEMPLATE,
+  DEPRECIATION_TEMPLATES,
+  copyStaffels,
+  percentageForAge,
+  yearlyDepreciation,
+} from '../../../core/models/depreciation-templates';
 
 type FuelEntryWithVerbruik = FuelEntry & {
   afstandKm: number | null;
@@ -158,7 +165,11 @@ export class VehicleDetail implements OnInit, OnDestroy {
         .map((entry) => ({ datum: entry.datum, bedrag: entry.kosten! })),
     );
     const vasteLasten = sumPerPeriod(this.recurringPayments());
-    const keys = this.periodRange([...brandstof.keys(), ...onderhoud.keys(), ...vasteLasten.keys()], perMonth);
+    const afschrijving = sumPerPeriod(this.depreciationPayments());
+    const keys = this.periodRange(
+      [...brandstof.keys(), ...onderhoud.keys(), ...vasteLasten.keys(), ...afschrijving.keys()],
+      perMonth,
+    );
     const series = (totals: Map<string, number>) => keys.map((key) => totals.get(key) ?? 0);
     const dataset = (label: string, data: number[], color: string, fill = false) => ({
       label,
@@ -171,12 +182,49 @@ export class VehicleDetail implements OnInit, OnDestroy {
     return {
       labels: keys.map((key) => (perMonth ? this.formatMonth(key) : key)),
       datasets: [
-        dataset('Totaal (EUR)', keys.map((key) => (brandstof.get(key) ?? 0) + (onderhoud.get(key) ?? 0) + (vasteLasten.get(key) ?? 0)), '#0f766e', true),
+        dataset(
+          'Totaal (EUR)',
+          keys.map((key) => [brandstof, onderhoud, vasteLasten, afschrijving].reduce((sum, totals) => sum + (totals.get(key) ?? 0), 0)),
+          '#0f766e',
+          true,
+        ),
         dataset('Brandstof (EUR)', series(brandstof), '#d97706'),
         dataset('Onderhoud (EUR)', series(onderhoud), '#2563eb'),
         dataset('Vaste lasten (EUR)', series(vasteLasten), '#7c3aed'),
+        ...(afschrijving.size > 0 ? [dataset('Afschrijving (EUR)', series(afschrijving), '#dc2626')] : []),
       ],
     };
+  });
+  /**
+   * Afschrijving als bedragen per datum, gelijk aan de backend-berekening (Vehicle.Afschrijvingstermijnen):
+   * per volle maand na de aankoopdatum t/m vandaag of de verkoopdatum het percentage uit de afschrijvingstabel
+   * bij de leeftijd op de termijndatum (jaar − bouwjaar), over de dan resterende waarde, tot de restwaarde. Na verkoop met bekende prijzen valt het verschil met het werkelijke waardeverlies
+   * (aanschafprijs − verkoopprijs) op de verkoopdatum, zodat het totaal gelijk is aan stats.afschrijving.
+   */
+  readonly depreciationPayments = computed(() => {
+    const v = this.vehicle();
+    const payments: { datum: string; bedrag: number }[] = [];
+    if (!v) return payments;
+    const vandaag = new Date().toISOString().slice(0, 10);
+    const peildatum = v.verkoopdatum && v.verkoopdatum < vandaag ? v.verkoopdatum : vandaag;
+    const tabel = v.afschrijvingstabel ?? [];
+    if (v.aankoopdatum && v.aanschafprijs != null && v.bouwjaar && tabel.length > 0) {
+      const restwaarde = v.restwaarde ?? 0;
+      let waarde = v.aanschafprijs;
+      for (let i = 1; waarde > restwaarde; i++) {
+        const datum = this.addMonths(v.aankoopdatum, i);
+        if (datum > peildatum) break;
+        const percentage = percentageForAge(tabel, Math.max(Number(datum.slice(0, 4)) - v.bouwjaar, 0));
+        const bedrag = Math.min((waarde * percentage) / 100, waarde - restwaarde);
+        waarde -= bedrag;
+        payments.push({ datum, bedrag });
+      }
+    }
+    if (v.aanschafprijs != null && v.verkoopdatum && v.verkoopprijs != null) {
+      const geboekt = payments.reduce((sum, payment) => sum + payment.bedrag, 0);
+      payments.push({ datum: v.verkoopdatum, bedrag: v.aanschafprijs - v.verkoopprijs - geboekt });
+    }
+    return payments;
   });
   readonly lineChartOptions: ChartConfiguration<'line'>['options'] = {
     responsive: true,
@@ -194,7 +242,11 @@ export class VehicleDetail implements OnInit, OnDestroy {
   readonly vehicleError = signal<string | null>(null);
   readonly vehicleMessage = signal<string | null>(null);
   newShareEmail = '';
-  editVehicle: VehicleRequest = { naam: '', merk: '', type: '', bouwjaar: undefined, aankoopdatum: undefined };
+  editVehicle: VehicleRequest = {
+    naam: '', merk: '', type: '', bouwjaar: undefined, aankoopdatum: undefined, afschrijvingstabel: [],
+  };
+  readonly depreciationTemplates = DEPRECIATION_TEMPLATES;
+  readonly yearlyDepreciation = yearlyDepreciation;
 
   readonly activeTab = signal<'brandstof' | 'onderhoud' | 'vaste-lasten'>('brandstof');
   readonly recurringCosts = signal<RecurringCost[]>([]);
@@ -265,13 +317,7 @@ export class VehicleDetail implements OnInit, OnDestroy {
   load(): void {
     this.vehicleService.getById(this.vehicleId).subscribe((v) => {
       this.vehicle.set(v);
-      this.editVehicle = {
-        naam: v.naam,
-        merk: v.merk ?? '',
-        type: v.type ?? '',
-        bouwjaar: v.bouwjaar,
-        aankoopdatum: v.aankoopdatum,
-      };
+      this.resetEditVehicle(v);
       // Toon meteen de kleine thumbnail (komt al inline mee); de scherpe foto wordt
       // lazy nagehaald via een los endpoint zodat de detailpagina niet 850KB+ JSON laadt.
       this.setPhotoUrl(v.fotoThumbnailDataUrl ?? null);
@@ -501,16 +547,79 @@ export class VehicleDetail implements OnInit, OnDestroy {
   editVehicleForm(): void {
     const v = this.vehicle();
     if (!v) return;
+    this.resetEditVehicle(v);
+    this.vehicleError.set(null);
+    this.vehicleMessage.set(null);
+    this.editingVehicle.set(true);
+  }
+
+  private resetEditVehicle(v: Vehicle): void {
     this.editVehicle = {
       naam: v.naam,
       merk: v.merk ?? '',
       type: v.type ?? '',
       bouwjaar: v.bouwjaar,
       aankoopdatum: v.aankoopdatum,
+      aanschafprijs: v.aanschafprijs ?? null,
+      restwaarde: v.restwaarde ?? null,
+      // Altijd een basis aandragen: zonder eigen tabel begint het formulier met het standaardtemplate.
+      afschrijvingstabel: copyStaffels(
+        v.afschrijvingstabel?.length ? v.afschrijvingstabel : DEFAULT_DEPRECIATION_TEMPLATE.staffels,
+      ),
+      verkoopdatum: v.verkoopdatum ?? null,
+      verkoopprijs: v.verkoopprijs ?? null,
     };
-    this.vehicleError.set(null);
-    this.vehicleMessage.set(null);
-    this.editingVehicle.set(true);
+  }
+
+  /** Naam van het template dat exact overeenkomt met de tabel, '' voor een eigen tabel, 'geen' voor een lege tabel. */
+  depreciationTemplateName(): string {
+    const tabel = this.editVehicle.afschrijvingstabel;
+    if (tabel.length === 0) return 'geen';
+    const match = DEPRECIATION_TEMPLATES.find(
+      (template) =>
+        template.staffels.length === tabel.length &&
+        template.staffels.every(
+          (staffel, i) =>
+            staffel.vanafLeeftijd === tabel[i].vanafLeeftijd && staffel.percentagePerMaand === tabel[i].percentagePerMaand,
+        ),
+    );
+    return match?.naam ?? '';
+  }
+
+  applyDepreciationTemplate(naam: string): void {
+    if (naam === '') return; // "Eigen tabel": huidige regels blijven staan om aan te passen.
+    const template = DEPRECIATION_TEMPLATES.find((t) => t.naam === naam);
+    this.editVehicle.afschrijvingstabel = template ? copyStaffels(template.staffels) : [];
+  }
+
+  addStaffel(): void {
+    const tabel = this.editVehicle.afschrijvingstabel;
+    const laatste = tabel[tabel.length - 1];
+    tabel.push({
+      vanafLeeftijd: laatste ? laatste.vanafLeeftijd + 1 : 0,
+      percentagePerMaand: laatste?.percentagePerMaand ?? 1,
+    });
+  }
+
+  removeStaffel(index: number): void {
+    this.editVehicle.afschrijvingstabel.splice(index, 1);
+  }
+
+  /** Wat er ontbreekt om de afschrijving per leeftijd te kunnen berekenen (zelfde regels als de API-validatie). */
+  depreciationWarnings(v: Pick<Vehicle, 'bouwjaar' | 'aankoopdatum' | 'aanschafprijs' | 'afschrijvingstabel'>): string[] {
+    if (!v.afschrijvingstabel?.length) return [];
+    const warnings: string[] = [];
+    if (!v.bouwjaar) warnings.push('Bouwjaar ontbreekt: de afschrijving hangt af van de leeftijd van de auto.');
+    if (v.aanschafprijs != null && !v.aankoopdatum) warnings.push('Aankoopdatum ontbreekt: vanaf die datum wordt afgeschreven.');
+    return warnings;
+  }
+
+  /** Huidige leeftijd en bijbehorend percentage, voor de samenvatting. */
+  currentDepreciation(v: Vehicle): { leeftijd: number; percentagePerMaand: number } | null {
+    if (!v.bouwjaar || !v.afschrijvingstabel?.length) return null;
+    const jaar = Number((v.verkoopdatum ?? new Date().toISOString()).slice(0, 4));
+    const leeftijd = Math.max(jaar - v.bouwjaar, 0);
+    return { leeftijd, percentagePerMaand: percentageForAge(v.afschrijvingstabel, leeftijd) };
   }
 
   cancelEditVehicle(): void {
@@ -520,13 +629,24 @@ export class VehicleDetail implements OnInit, OnDestroy {
   saveVehicle(): void {
     this.vehicleError.set(null);
     this.vehicleMessage.set(null);
-    this.vehicleService.update(this.vehicleId, this.editVehicle).subscribe({
+    const request: VehicleRequest = {
+      ...this.editVehicle,
+      // Een leeggemaakt datumveld geeft '' terug; de API verwacht dan null.
+      aankoopdatum: this.editVehicle.aankoopdatum || undefined,
+      verkoopdatum: this.editVehicle.verkoopdatum || null,
+      afschrijvingstabel: this.editVehicle.afschrijvingstabel
+        .filter((staffel) => staffel.vanafLeeftijd != null && staffel.percentagePerMaand != null)
+        .sort((a, b) => a.vanafLeeftijd - b.vanafLeeftijd),
+    };
+    this.vehicleService.update(this.vehicleId, request).subscribe({
       next: () => {
         this.vehicleMessage.set('Voertuiggegevens opgeslagen.');
         this.editingVehicle.set(false);
         this.load();
       },
-      error: (err) => this.vehicleError.set(err.error ?? 'Voertuiggegevens opslaan mislukt.'),
+      error: (err) => this.vehicleError.set(
+        typeof err?.error === 'string' ? err.error : 'Voertuiggegevens opslaan mislukt.',
+      ),
     });
   }
 
@@ -588,6 +708,16 @@ export class VehicleDetail implements OnInit, OnDestroy {
       }
     }
     return range;
+  }
+
+  /** Zelfde semantiek als DateOnly.AddMonths: een te grote dag wordt de laatste dag van de maand. */
+  private addMonths(date: string, months: number): string {
+    const [year, month, day] = date.split('-').map(Number);
+    const totalMonths = year * 12 + (month - 1) + months;
+    const targetYear = Math.floor(totalMonths / 12);
+    const targetMonth = (totalMonths % 12) + 1;
+    const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+    return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}`;
   }
 
   private formatMonth(key: string): string {

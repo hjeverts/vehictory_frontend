@@ -23,6 +23,9 @@
           }
           <h3>{{ vehicle.naam }}</h3>
           <p>{{ vehicle.merk }} {{ vehicle.type }} @if (vehicle.bouwjaar) { ({{ vehicle.bouwjaar }}) }</p>
+          @if (vehicle.verkoopdatum) {
+            <p class="sold-badge">Verkocht</p>
+          }
           @if (!vehicle.isOwner) {
             <p class="shared-badge">Gedeeld door {{ vehicle.eigenaarNaam }}</p>
           }
