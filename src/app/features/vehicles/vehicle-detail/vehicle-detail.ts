@@ -240,13 +240,9 @@ export class VehicleDetail implements OnInit, OnDestroy {
     vergeten: false,
   };
 
-  newMaintenanceEntry: MaintenanceEntryRequest = {
-    datum: new Date().toISOString().slice(0, 10),
-    odometer: 0,
-    maintenanceTypeId: 0,
-    notitie: '',
-    kosten: null,
-  };
+  newMaintenanceEntry: MaintenanceEntryRequest = this.emptyMaintenanceEntry();
+  readonly editingMaintenanceEntryId = signal<number | null>(null);
+  readonly maintenanceError = signal<string | null>(null);
 
   constructor(
     private route: ActivatedRoute,
@@ -329,22 +325,61 @@ export class VehicleDetail implements OnInit, OnDestroy {
     this.fuelEntryService.delete(this.vehicleId, id).subscribe(() => this.load());
   }
 
-  addMaintenanceEntry(): void {
+  saveMaintenanceEntry(): void {
     if (!this.newMaintenanceEntry.maintenanceTypeId) return;
-    this.maintenanceService.create(this.vehicleId, this.newMaintenanceEntry).subscribe(() => {
-      this.newMaintenanceEntry = {
-        datum: new Date().toISOString().slice(0, 10),
-        odometer: 0,
-        maintenanceTypeId: 0,
-        notitie: '',
-        kosten: null,
-      };
-      this.load();
+    this.maintenanceError.set(null);
+    const request: MaintenanceEntryRequest = {
+      ...this.newMaintenanceEntry,
+      maintenanceTypeId: Number(this.newMaintenanceEntry.maintenanceTypeId),
+      kosten: this.newMaintenanceEntry.kosten ?? null,
+    };
+    const id = this.editingMaintenanceEntryId();
+    const save$ = id === null
+      ? this.maintenanceService.create(this.vehicleId, request)
+      : this.maintenanceService.update(this.vehicleId, id, request);
+    save$.subscribe({
+      next: () => {
+        this.cancelEditMaintenanceEntry();
+        this.load();
+      },
+      error: (err) => this.maintenanceError.set(
+        typeof err?.error === 'string' ? err.error : 'Onderhoud opslaan mislukt.',
+      ),
     });
   }
 
+  editMaintenanceEntry(entry: MaintenanceEntry): void {
+    this.newMaintenanceEntry = {
+      datum: entry.datum,
+      odometer: entry.odometer,
+      maintenanceTypeId: entry.maintenanceTypeId,
+      notitie: entry.notitie ?? '',
+      kosten: entry.kosten ?? null,
+    };
+    this.maintenanceError.set(null);
+    this.editingMaintenanceEntryId.set(entry.id);
+  }
+
+  cancelEditMaintenanceEntry(): void {
+    this.newMaintenanceEntry = this.emptyMaintenanceEntry();
+    this.editingMaintenanceEntryId.set(null);
+  }
+
+  private emptyMaintenanceEntry(): MaintenanceEntryRequest {
+    return {
+      datum: new Date().toISOString().slice(0, 10),
+      odometer: 0,
+      maintenanceTypeId: 0,
+      notitie: '',
+      kosten: null,
+    };
+  }
+
   deleteMaintenanceEntry(id: number): void {
-    this.maintenanceService.delete(this.vehicleId, id).subscribe(() => this.load());
+    this.maintenanceService.delete(this.vehicleId, id).subscribe(() => {
+      if (this.editingMaintenanceEntryId() === id) this.cancelEditMaintenanceEntry();
+      this.load();
+    });
   }
 
   addMaintenanceType(): void {

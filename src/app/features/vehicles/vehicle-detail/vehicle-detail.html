@@ -175,8 +175,11 @@
 
   @if (activeTab() === 'onderhoud') {
   <section>
-    <h2>Onderhoud</h2>
-    <form (ngSubmit)="addMaintenanceEntry()" class="entry-form">
+    <h2>{{ editingMaintenanceEntryId() === null ? 'Onderhoud' : 'Onderhoud bewerken' }}</h2>
+    @if (editingMaintenanceEntryId() !== null) {
+      <p>Bestaande bijlagen blijven bewaard; verwijder ze los in de tabel als dat nodig is.</p>
+    }
+    <form (ngSubmit)="saveMaintenanceEntry()" class="entry-form">
       <label>
         <span>Datum</span>
         <input type="date" name="odatum" [(ngModel)]="newMaintenanceEntry.datum" required />
@@ -211,8 +214,14 @@
         <span>Kosten (&euro;)</span>
         <input type="number" step="0.01" min="0" name="okosten" [(ngModel)]="newMaintenanceEntry.kosten" />
       </label>
-      <button type="submit">Toevoegen</button>
+      <button type="submit">{{ editingMaintenanceEntryId() === null ? 'Toevoegen' : 'Opslaan' }}</button>
+      @if (editingMaintenanceEntryId() !== null) {
+        <button type="button" (click)="cancelEditMaintenanceEntry()">Annuleren</button>
+      }
     </form>
+    @if (maintenanceError(); as error) {
+      <p class="error">{{ error }}</p>
+    }
     @if (maintenanceTypeError(); as error) {
       <p class="error">{{ error }}</p>
     }
@@ -264,7 +273,10 @@
                 />
               </label>
             </td>
-            <td><button (click)="deleteMaintenanceEntry(entry.id)">×</button></td>
+            <td>
+              <button type="button" (click)="editMaintenanceEntry(entry)">Bewerken</button>
+              <button type="button" (click)="deleteMaintenanceEntry(entry.id)">×</button>
+            </td>
           </tr>
         }
       </tbody>

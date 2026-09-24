@@ -25,6 +25,10 @@ export class MaintenanceService {
     return this.http.post<MaintenanceEntry>(this.baseUrl(vehicleId), entry);
   }
 
+  update(vehicleId: number, id: number, entry: MaintenanceEntryRequest): Observable<MaintenanceEntry> {
+    return this.http.put<MaintenanceEntry>(`${this.baseUrl(vehicleId)}/${id}`, entry);
+  }
+
   delete(vehicleId: number, id: number): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl(vehicleId)}/${id}`);
   }
