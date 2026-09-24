@@ -17,12 +17,15 @@ import { BaseChartDirective, provideCharts } from 'ng2-charts';
 import { VehicleService } from '../../../core/services/vehicle';
 import { FuelEntryService } from '../../../core/services/fuel-entry';
 import { MaintenanceService } from '../../../core/services/maintenance';
+import { RecurringCostService } from '../../../core/services/recurring-cost';
 import {
   FuelEntry,
   FuelEntryRequest,
   MaintenanceEntry,
   MaintenanceEntryRequest,
   MaintenanceType,
+  RecurringCost,
+  RecurringCostRequest,
   Vehicle,
   VehicleRequest,
   VehicleShare,
@@ -113,10 +116,6 @@ export class VehicleDetail implements OnInit, OnDestroy {
       '#d97706',
     );
   });
-  readonly totaleAfstandKm = computed(() => {
-    const odometers = this.fuelEntries().map((entry) => entry.odometer);
-    return odometers.length > 1 ? Math.max(...odometers) - Math.min(...odometers) : 0;
-  });
   readonly distancePeriod = signal<'maand' | 'jaar'>('maand');
   readonly distanceChartData = computed<ChartConfiguration<'line'>['data']>(() => {
     const perMonth = this.distancePeriod() === 'maand';
@@ -160,7 +159,25 @@ export class VehicleDetail implements OnInit, OnDestroy {
   newShareEmail = '';
   editVehicle: VehicleRequest = { naam: '', merk: '', type: '', bouwjaar: undefined, aankoopdatum: undefined };
 
-  readonly activeTab = signal<'brandstof' | 'onderhoud'>('brandstof');
+  readonly activeTab = signal<'brandstof' | 'onderhoud' | 'vaste-lasten'>('brandstof');
+  readonly recurringCosts = signal<RecurringCost[]>([]);
+  readonly recurringCostError = signal<string | null>(null);
+  readonly editingRecurringCostId = signal<number | null>(null);
+  readonly showAllRecurringPayments = signal(false);
+  readonly recurringCostSoorten: RecurringCost['soort'][] = ['Wegenbelasting', 'Verzekering'];
+  readonly recurringCostFrequenties: RecurringCost['frequentie'][] = ['Maand', 'Kwartaal', 'Jaar'];
+  /** Alle automatisch ingevulde termijnen van alle posten, nieuwste eerst. */
+  readonly recurringPayments = computed(() =>
+    this.recurringCosts()
+      .flatMap((cost) => cost.termijnen.map((datum) => ({ datum, soort: cost.soort, bedrag: cost.bedrag, costId: cost.id })))
+      .sort((a, b) => b.datum.localeCompare(a.datum)),
+  );
+  readonly visibleRecurringPayments = computed(() =>
+    this.showAllRecurringPayments()
+      ? this.recurringPayments()
+      : this.recurringPayments().slice(0, this.visibleEntryCount),
+  );
+  newRecurringCost: RecurringCostRequest = this.emptyRecurringCost();
   readonly editingVehicle = signal(false);
   readonly showAllFuelEntries = signal(false);
   readonly showAllMaintenanceEntries = signal(false);
@@ -191,6 +208,7 @@ export class VehicleDetail implements OnInit, OnDestroy {
     odometer: 0,
     maintenanceTypeId: 0,
     notitie: '',
+    kosten: null,
   };
 
   constructor(
@@ -198,6 +216,7 @@ export class VehicleDetail implements OnInit, OnDestroy {
     private vehicleService: VehicleService,
     private fuelEntryService: FuelEntryService,
     private maintenanceService: MaintenanceService,
+    private recurringCostService: RecurringCostService,
   ) {}
 
   ngOnInit(): void {
@@ -233,6 +252,7 @@ export class VehicleDetail implements OnInit, OnDestroy {
     this.vehicleService.getStats(this.vehicleId).subscribe((s) => this.stats.set(s));
     this.fuelEntryService.getAll(this.vehicleId).subscribe((entries) => this.fuelEntries.set(entries));
     this.maintenanceService.getAll(this.vehicleId).subscribe((entries) => this.maintenanceEntries.set(entries));
+    this.recurringCostService.getAll(this.vehicleId).subscribe((costs) => this.recurringCosts.set(costs));
   }
 
   private setPhotoUrl(url: string | null): void {
@@ -280,6 +300,7 @@ export class VehicleDetail implements OnInit, OnDestroy {
         odometer: 0,
         maintenanceTypeId: 0,
         notitie: '',
+        kosten: null,
       };
       this.load();
     });
@@ -328,6 +349,61 @@ export class VehicleDetail implements OnInit, OnDestroy {
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     });
+  }
+
+  saveRecurringCost(): void {
+    this.recurringCostError.set(null);
+    const request: RecurringCostRequest = { ...this.newRecurringCost, einddatum: this.newRecurringCost.einddatum || null };
+    const id = this.editingRecurringCostId();
+    const save$ = id === null
+      ? this.recurringCostService.create(this.vehicleId, request)
+      : this.recurringCostService.update(this.vehicleId, id, request);
+    save$.subscribe({
+      next: () => {
+        this.cancelEditRecurringCost();
+        this.load();
+      },
+      error: (err) => this.recurringCostError.set(
+        typeof err?.error === 'string' ? err.error : 'Vaste last opslaan mislukt.',
+      ),
+    });
+  }
+
+  editRecurringCost(cost: RecurringCost): void {
+    this.newRecurringCost = {
+      soort: cost.soort,
+      bedrag: cost.bedrag,
+      frequentie: cost.frequentie,
+      startdatum: cost.startdatum,
+      einddatum: cost.einddatum ?? null,
+      notitie: cost.notitie ?? '',
+    };
+    this.recurringCostError.set(null);
+    this.editingRecurringCostId.set(cost.id);
+  }
+
+  cancelEditRecurringCost(): void {
+    this.newRecurringCost = this.emptyRecurringCost();
+    this.editingRecurringCostId.set(null);
+  }
+
+  deleteRecurringCost(id: number): void {
+    if (!confirm('Deze vaste last en alle bijbehorende termijnen verwijderen?')) return;
+    this.recurringCostService.delete(this.vehicleId, id).subscribe(() => {
+      if (this.editingRecurringCostId() === id) this.cancelEditRecurringCost();
+      this.load();
+    });
+  }
+
+  private emptyRecurringCost(): RecurringCostRequest {
+    return {
+      soort: 'Wegenbelasting',
+      bedrag: 0,
+      frequentie: 'Kwartaal',
+      startdatum: new Date().toISOString().slice(0, 10),
+      einddatum: null,
+      notitie: '',
+    };
   }
 
   addShare(): void {

@@ -37,6 +37,7 @@
   <nav class="tabs">
     <button type="button" [class.active]="activeTab() === 'brandstof'" (click)="activeTab.set('brandstof')">Brandstof</button>
     <button type="button" [class.active]="activeTab() === 'onderhoud'" (click)="activeTab.set('onderhoud')">Onderhoud</button>
+    <button type="button" [class.active]="activeTab() === 'vaste-lasten'" (click)="activeTab.set('vaste-lasten')">Vaste lasten</button>
   </nav>
 
   @if (activeTab() === 'brandstof') {
@@ -84,10 +85,15 @@
   @if (stats(); as s) {
     <section class="stats">
       <div><strong>{{ s.totaleKosten | number: '1.2-2' }}</strong><span>Totale kosten (&euro;)</span></div>
+      <div><strong>{{ s.brandstofKosten | number: '1.2-2' }}</strong><span>Brandstofkosten (&euro;)</span></div>
+      <div><strong>{{ s.onderhoudsKosten | number: '1.2-2' }}</strong><span>Onderhoudskosten (&euro;)</span></div>
+      <div><strong>{{ s.vasteLasten | number: '1.2-2' }}</strong><span>Vaste lasten (&euro;)</span></div>
+      <div><strong>{{ s.kostenPerKm !== null ? (s.kostenPerKm | number: '1.2-2') : '–' }}</strong><span>Kosten per km (&euro;)</span></div>
+      <div><strong>{{ s.kostenPerJaar !== null ? (s.kostenPerJaar | number: '1.0-0') : '–' }}</strong><span>Kosten per jaar (&euro;)</span></div>
       <div><strong>{{ s.totaalLiters | number: '1.1-1' }}</strong><span>Totaal getankt (L)</span></div>
       <div><strong>{{ s.gemiddeldeVerbruikL100km | number: '1.1-1' }}</strong><span>L/100km</span></div>
       <div><strong>{{ s.gemiddeldePrijsPerLiter | number: '1.3-3' }}</strong><span>&euro;/L gemiddeld</span></div>
-      <div><strong>{{ totaleAfstandKm() | number: '1.0-0' }}</strong><span>Totale afstand gelogd (km)</span></div>
+      <div><strong>{{ s.totaleAfstandKm | number: '1.0-0' }}</strong><span>Totale afstand gelogd (km)</span></div>
       <div><strong>{{ s.laatsteOdometer }}</strong><span>Laatste km-stand</span></div>
     </section>
   }
@@ -190,6 +196,10 @@
         <span>Notitie</span>
         <input type="text" name="notitie" [(ngModel)]="newMaintenanceEntry.notitie" />
       </label>
+      <label>
+        <span>Kosten (&euro;)</span>
+        <input type="number" step="0.01" min="0" name="okosten" [(ngModel)]="newMaintenanceEntry.kosten" />
+      </label>
       <button type="submit">Toevoegen</button>
     </form>
     @if (maintenanceTypeError(); as error) {
@@ -201,7 +211,7 @@
 
     <table>
       <thead>
-        <tr><th>Datum</th><th>Km-stand</th><th>Type</th><th>Notitie</th><th>Bijlagen (foto's, facturen)</th><th></th></tr>
+        <tr><th>Datum</th><th>Km-stand</th><th>Type</th><th>Notitie</th><th>Kosten</th><th>Bijlagen (foto's, facturen)</th><th></th></tr>
       </thead>
       <tbody>
         @for (entry of visibleMaintenanceEntries(); track entry.id) {
@@ -210,6 +220,7 @@
             <td>{{ entry.odometer }}</td>
             <td>{{ entry.maintenanceTypeNaam }}</td>
             <td>{{ entry.notitie }}</td>
+            <td>{{ entry.kosten != null ? (entry.kosten | number: '1.2-2') : '–' }}</td>
             <td class="attachments-cell">
               @for (attachment of entry.attachments; track attachment.id) {
                 <span class="attachment-chip">
@@ -253,6 +264,109 @@
       </button>
     }
   </section>
+  }
+
+  @if (activeTab() === 'vaste-lasten') {
+  <section>
+    <h2>{{ editingRecurringCostId() === null ? 'Nieuwe vaste last' : 'Vaste last bewerken' }}</h2>
+    <p>
+      Termijnen worden automatisch ingevuld vanaf de startdatum, elke maand, elk kwartaal of elk jaar, tot de einddatum
+      (op de einddatum zelf valt geen termijn meer). Voeg je bij een wijziging, bijvoorbeeld een nieuwe verzekering, een nieuwe
+      post van dezelfde soort toe, dan krijgt de lopende post de startdatum van de nieuwe als einddatum.
+    </p>
+    <form (ngSubmit)="saveRecurringCost()" class="entry-form">
+      <label>
+        <span>Soort</span>
+        <select name="rsoort" [(ngModel)]="newRecurringCost.soort" required>
+          @for (soort of recurringCostSoorten; track soort) {
+            <option [value]="soort">{{ soort }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        <span>Bedrag per termijn (&euro;)</span>
+        <input type="number" step="0.01" min="0" name="rbedrag" [(ngModel)]="newRecurringCost.bedrag" required />
+      </label>
+      <label>
+        <span>Frequentie</span>
+        <select name="rfrequentie" [(ngModel)]="newRecurringCost.frequentie" required>
+          @for (frequentie of recurringCostFrequenties; track frequentie) {
+            <option [value]="frequentie">Per {{ frequentie.toLowerCase() }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        <span>Startdatum (1e termijn)</span>
+        <input type="date" name="rstart" [(ngModel)]="newRecurringCost.startdatum" required />
+      </label>
+      <label>
+        <span>Einddatum (optioneel, exclusief)</span>
+        <input type="date" name="reind" [(ngModel)]="newRecurringCost.einddatum" />
+      </label>
+      <label>
+        <span>Notitie</span>
+        <input type="text" name="rnotitie" [(ngModel)]="newRecurringCost.notitie" />
+      </label>
+      <button type="submit">{{ editingRecurringCostId() === null ? 'Toevoegen' : 'Opslaan' }}</button>
+      @if (editingRecurringCostId() !== null) {
+        <button type="button" (click)="cancelEditRecurringCost()">Annuleren</button>
+      }
+    </form>
+    @if (recurringCostError(); as error) {
+      <p class="error">{{ error }}</p>
+    }
+
+    <table>
+      <thead>
+        <tr><th>Soort</th><th>Bedrag</th><th>Frequentie</th><th>Startdatum</th><th>Einddatum</th><th>Volgende termijn</th><th>Totaal betaald</th><th>Notitie</th><th></th></tr>
+      </thead>
+      <tbody>
+        @for (cost of recurringCosts(); track cost.id) {
+          <tr>
+            <td>{{ cost.soort }}</td>
+            <td>{{ cost.bedrag | number: '1.2-2' }}</td>
+            <td>Per {{ cost.frequentie.toLowerCase() }}</td>
+            <td>{{ cost.startdatum }}</td>
+            <td>{{ cost.einddatum || '–' }}</td>
+            <td>{{ cost.volgendeTermijn || '–' }}</td>
+            <td>{{ cost.totaalBetaald | number: '1.2-2' }}</td>
+            <td>{{ cost.notitie }}</td>
+            <td>
+              <button type="button" (click)="editRecurringCost(cost)">Bewerken</button>
+              <button type="button" (click)="deleteRecurringCost(cost.id)">×</button>
+            </td>
+          </tr>
+        } @empty {
+          <tr><td colspan="9">Nog geen vaste lasten toegevoegd.</td></tr>
+        }
+      </tbody>
+    </table>
+  </section>
+
+  @if (recurringPayments().length > 0) {
+    <section>
+      <h2>Termijnen</h2>
+      <table>
+        <thead>
+          <tr><th>Datum</th><th>Soort</th><th>Bedrag</th></tr>
+        </thead>
+        <tbody>
+          @for (payment of visibleRecurringPayments(); track payment.costId + payment.datum) {
+            <tr>
+              <td>{{ payment.datum }}</td>
+              <td>{{ payment.soort }}</td>
+              <td>{{ payment.bedrag | number: '1.2-2' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      @if (recurringPayments().length > visibleEntryCount) {
+        <button type="button" class="show-more" (click)="showAllRecurringPayments.set(!showAllRecurringPayments())">
+          {{ showAllRecurringPayments() ? 'Toon minder' : 'Toon alle ' + recurringPayments().length + ' termijnen' }}
+        </button>
+      }
+    </section>
+  }
   }
 
   @if (v.isOwner) {
