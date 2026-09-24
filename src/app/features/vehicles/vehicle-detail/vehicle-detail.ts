@@ -2,8 +2,18 @@ import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ChartConfiguration } from 'chart.js';
-import { BaseChartDirective } from 'ng2-charts';
+import {
+  CategoryScale,
+  ChartConfiguration,
+  Filler,
+  Legend,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip,
+} from 'chart.js';
+import { BaseChartDirective, provideCharts } from 'ng2-charts';
 import { VehicleService } from '../../../core/services/vehicle';
 import { FuelEntryService } from '../../../core/services/fuel-entry';
 import { MaintenanceService } from '../../../core/services/maintenance';
@@ -28,6 +38,12 @@ type FuelEntryWithVerbruik = FuelEntry & {
   selector: 'app-vehicle-detail',
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, BaseChartDirective],
+  // Alleen de Chart.js-onderdelen voor lijngrafieken, zodat Chart.js in de lazy chunk van deze pagina blijft.
+  providers: [
+    provideCharts({
+      registerables: [LineController, LineElement, PointElement, CategoryScale, LinearScale, Filler, Tooltip, Legend],
+    }),
+  ],
   templateUrl: './vehicle-detail.html',
   styleUrl: './vehicle-detail.scss',
 })
