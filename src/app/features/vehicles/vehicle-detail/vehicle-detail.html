@@ -41,6 +41,46 @@
 
   @if (activeTab() === 'brandstof') {
 
+  <section>
+    <h2>Nieuwe tankbeurt</h2>
+    <form (ngSubmit)="addFuelEntry()" class="entry-form">
+      <label>
+        <span>Datum</span>
+        <input type="date" name="datum" [(ngModel)]="newFuelEntry.datum" required />
+      </label>
+      <label>
+        <span>Km-stand</span>
+        <input type="number" name="odometer" [(ngModel)]="newFuelEntry.odometer" required />
+      </label>
+      <label>
+        <span>Brandstoftype</span>
+        <select name="brandstofType" [(ngModel)]="newFuelEntry.brandstofType">
+          <option value="">Niet opgegeven</option>
+          @for (fuelType of fuelTypes; track fuelType) {
+            <option [value]="fuelType">{{ fuelType }}</option>
+          }
+        </select>
+      </label>
+      <label>
+        <span>Liters</span>
+        <input type="number" step="0.01" name="volume" [(ngModel)]="newFuelEntry.volume" required />
+      </label>
+      <label>
+        <span>Bedrag (&euro;)</span>
+        <input type="number" step="0.01" name="bedrag" [(ngModel)]="newFuelEntry.bedrag" required />
+      </label>
+      <label>
+        <span>Tankstation</span>
+        <input type="text" name="tankstation" [(ngModel)]="newFuelEntry.tankstation" />
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" name="vergeten" [(ngModel)]="newFuelEntry.vergeten" />
+        <span>Sinds de vorige registratie is een tankbeurt vergeten</span>
+      </label>
+      <button type="submit">Toevoegen</button>
+    </form>
+  </section>
+
   @if (stats(); as s) {
     <section class="stats">
       <div><strong>{{ s.totaleKosten | number: '1.2-2' }}</strong><span>Totale kosten (&euro;)</span></div>
@@ -87,42 +127,6 @@
 
   <section>
     <h2>Tankbeurten</h2>
-    <form (ngSubmit)="addFuelEntry()" class="entry-form">
-      <label>
-        <span>Datum</span>
-        <input type="date" name="datum" [(ngModel)]="newFuelEntry.datum" required />
-      </label>
-      <label>
-        <span>Km-stand</span>
-        <input type="number" name="odometer" [(ngModel)]="newFuelEntry.odometer" required />
-      </label>
-      <label>
-        <span>Brandstoftype</span>
-        <select name="brandstofType" [(ngModel)]="newFuelEntry.brandstofType">
-          <option value="">Niet opgegeven</option>
-          @for (fuelType of fuelTypes; track fuelType) {
-            <option [value]="fuelType">{{ fuelType }}</option>
-          }
-        </select>
-      </label>
-      <label>
-        <span>Liters</span>
-        <input type="number" step="0.01" name="volume" [(ngModel)]="newFuelEntry.volume" required />
-      </label>
-      <label>
-        <span>Bedrag (&euro;)</span>
-        <input type="number" step="0.01" name="bedrag" [(ngModel)]="newFuelEntry.bedrag" required />
-      </label>
-      <label>
-        <span>Tankstation</span>
-        <input type="text" name="tankstation" [(ngModel)]="newFuelEntry.tankstation" />
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" name="vergeten" [(ngModel)]="newFuelEntry.vergeten" />
-        <span>Sinds de vorige registratie is een tankbeurt vergeten</span>
-      </label>
-      <button type="submit">Toevoegen</button>
-    </form>
 
     <table>
       <thead>

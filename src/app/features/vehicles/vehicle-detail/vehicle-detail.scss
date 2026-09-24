@@ -72,7 +72,8 @@
 
 .charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  // Maximaal twee kolommen (2×2 bij vier grafieken), één kolom op smalle schermen.
+  grid-template-columns: repeat(auto-fit, minmax(max(18rem, calc(50% - 0.5rem)), 1fr));
   gap: 1rem;
   margin: 1.5rem 0 0;
 }
