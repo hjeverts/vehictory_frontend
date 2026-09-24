@@ -83,6 +83,31 @@
   }
 }
 
+.chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.period-toggle {
+  display: flex;
+  gap: 0.25rem;
+
+  button {
+    padding: 0.3rem 0.75rem;
+    background: none;
+    color: var(--muted);
+    font-weight: 600;
+
+    &.active {
+      background: var(--primary-soft);
+      color: var(--primary-dark);
+    }
+  }
+}
+
 .chart-container {
   height: 18rem;
   position: relative;

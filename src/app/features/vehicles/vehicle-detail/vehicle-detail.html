@@ -47,6 +47,7 @@
       <div><strong>{{ s.totaalLiters | number: '1.1-1' }}</strong><span>Totaal getankt (L)</span></div>
       <div><strong>{{ s.gemiddeldeVerbruikL100km | number: '1.1-1' }}</strong><span>L/100km</span></div>
       <div><strong>{{ s.gemiddeldePrijsPerLiter | number: '1.3-3' }}</strong><span>&euro;/L gemiddeld</span></div>
+      <div><strong>{{ totaleAfstandKm() | number: '1.0-0' }}</strong><span>Totale afstand gelogd (km)</span></div>
       <div><strong>{{ s.laatsteOdometer }}</strong><span>Laatste km-stand</span></div>
     </section>
   }
@@ -67,7 +68,19 @@
     <article class="chart-card">
       <h2>Kosten per tankbeurt</h2>
       <div class="chart-container">
-        <canvas baseChart type="bar" [data]="fuelCostChartData()" [options]="barChartOptions"></canvas>
+        <canvas baseChart type="line" [data]="fuelCostChartData()" [options]="lineChartOptions"></canvas>
+      </div>
+    </article>
+    <article class="chart-card">
+      <div class="chart-header">
+        <h2>Afstand per {{ distancePeriod() }}</h2>
+        <div class="period-toggle" role="group" aria-label="Periode">
+          <button type="button" [class.active]="distancePeriod() === 'maand'" [attr.aria-pressed]="distancePeriod() === 'maand'" (click)="distancePeriod.set('maand')">Maand</button>
+          <button type="button" [class.active]="distancePeriod() === 'jaar'" [attr.aria-pressed]="distancePeriod() === 'jaar'" (click)="distancePeriod.set('jaar')">Jaar</button>
+        </div>
+      </div>
+      <div class="chart-container">
+        <canvas baseChart type="line" [data]="distanceChartData()" [options]="lineChartOptions"></canvas>
       </div>
     </article>
   </section>

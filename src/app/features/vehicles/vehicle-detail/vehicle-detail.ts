@@ -88,24 +88,45 @@ export class VehicleDetail implements OnInit, OnDestroy {
       '#059669',
     );
   });
-  readonly fuelCostChartData = computed<ChartConfiguration<'bar'>['data']>(() => {
+  readonly fuelCostChartData = computed<ChartConfiguration<'line'>['data']>(() => {
     const entries = this.chartEntries();
+    return this.createLineChartData(
+      entries,
+      'Kosten per tankbeurt (EUR)',
+      entries.map((entry) => entry.bedrag),
+      '#d97706',
+    );
+  });
+  readonly totaleAfstandKm = computed(() => {
+    const odometers = this.fuelEntries().map((entry) => entry.odometer);
+    return odometers.length > 1 ? Math.max(...odometers) - Math.min(...odometers) : 0;
+  });
+  readonly distancePeriod = signal<'maand' | 'jaar'>('maand');
+  readonly distanceChartData = computed<ChartConfiguration<'line'>['data']>(() => {
+    const perMonth = this.distancePeriod() === 'maand';
+    // Gereden afstand op basis van km-standen, ook over "vergeten"-intervallen, zodat de som
+    // gelijk is aan de totale afstand. Elk interval telt mee in de periode van de latere tankbeurt.
+    const byOdometer = [...this.fuelEntries()].sort((a, b) => a.odometer - b.odometer);
+    const totals = new Map<string, number>();
+    for (let i = 1; i < byOdometer.length; i++) {
+      const entry = byOdometer[i];
+      const key = perMonth ? entry.datum.slice(0, 7) : entry.datum.slice(0, 4);
+      totals.set(key, (totals.get(key) ?? 0) + entry.odometer - byOdometer[i - 1].odometer);
+    }
+    const keys = this.periodRange([...totals.keys()], perMonth);
     return {
-      labels: entries.map((entry) => this.formatDate(entry.datum)),
+      labels: keys.map((key) => (perMonth ? this.formatMonth(key) : key)),
       datasets: [{
-        label: 'Kosten per tankbeurt (EUR)',
-        data: entries.map((entry) => entry.bedrag),
-        backgroundColor: '#d97706',
-        borderRadius: 4,
+        label: 'Afstand (km)',
+        data: keys.map((key) => totals.get(key) ?? 0),
+        borderColor: '#7c3aed',
+        backgroundColor: '#7c3aed26',
+        fill: true,
+        tension: 0.25,
       }],
     };
   });
   readonly lineChartOptions: ChartConfiguration<'line'>['options'] = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: { y: { beginAtZero: true } },
-  };
-  readonly barChartOptions: ChartConfiguration<'bar'>['options'] = {
     responsive: true,
     maintainAspectRatio: false,
     scales: { y: { beginAtZero: true } },
@@ -381,6 +402,32 @@ export class VehicleDetail implements OnInit, OnDestroy {
         tension: 0.25,
       }],
     };
+  }
+
+  /** Alle periodes van de eerste t/m de laatste sleutel, zodat periodes zonder afstand als 0 verschijnen. */
+  private periodRange(keys: string[], perMonth: boolean): string[] {
+    if (keys.length === 0) return [];
+    const sorted = [...keys].sort();
+    const [firstYear, firstMonth] = sorted[0].split('-').map(Number);
+    const [lastYear, lastMonth] = sorted[sorted.length - 1].split('-').map(Number);
+    const range: string[] = [];
+    if (!perMonth) {
+      for (let year = firstYear; year <= lastYear; year++) range.push(String(year));
+      return range;
+    }
+    for (let year = firstYear, month = firstMonth; year < lastYear || (year === lastYear && month <= lastMonth); ) {
+      range.push(`${year}-${String(month).padStart(2, '0')}`);
+      month++;
+      if (month > 12) {
+        month = 1;
+        year++;
+      }
+    }
+    return range;
+  }
+
+  private formatMonth(key: string): string {
+    return new Intl.DateTimeFormat('nl-NL', { month: 'short', year: 'numeric' }).format(new Date(`${key}-01T00:00:00`));
   }
 
   private formatDate(date: string): string {
