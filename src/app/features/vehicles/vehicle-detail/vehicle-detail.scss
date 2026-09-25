@@ -116,9 +116,14 @@
   }
 }
 
-// Vijfde grafiek over de volle breedte, zodat het 2×2-raster erboven intact blijft.
+// Brede grafieken over de volle breedte, zodat het 2×2-raster erboven intact blijft.
 .chart-card--wide {
   grid-column: 1 / -1;
+}
+
+.chart-note {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
 }
 
 .chart-header {

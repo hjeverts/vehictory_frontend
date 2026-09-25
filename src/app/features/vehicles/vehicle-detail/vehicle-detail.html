@@ -202,6 +202,32 @@
         <canvas baseChart type="line" [data]="costChartData()" [options]="lineChartOptions"></canvas>
       </div>
     </article>
+    @if (costPerKm(); as perKm) {
+      <article class="chart-card chart-card--wide">
+        <div class="chart-header">
+          <h2>Kosten per km</h2>
+          <div class="period-toggle" role="group" aria-label="Gemiddelde over">
+            <button type="button" [class.active]="costPerKmWindow() === 6" [attr.aria-pressed]="costPerKmWindow() === 6" (click)="costPerKmWindow.set(6)">6 mnd</button>
+            <button type="button" [class.active]="costPerKmWindow() === 12" [attr.aria-pressed]="costPerKmWindow() === 12" (click)="costPerKmWindow.set(12)">12 mnd</button>
+          </div>
+        </div>
+        @if (perKm.huidig !== null) {
+          <p><strong>
+            Nu &euro; {{ perKm.huidig | number: '1.3-3' }}/km
+            @if (perKm.trendPerJaar !== null) {
+              &middot; trend {{ perKm.trendPerJaar >= 0 ? '+' : '' }}{{ perKm.trendPerJaar * 100 | number: '1.1-1' }} cent/km per jaar
+            }
+          </strong></p>
+        }
+        <div class="chart-container">
+          <canvas baseChart type="line" [data]="costPerKmChartData()" [options]="costPerKmChartOptions"></canvas>
+        </div>
+        <p class="chart-note">
+          Onderhoud is verdeeld over de periode tot de volgende beurt van hetzelfde type, vaste lasten over hun termijn
+          en tankbeurten over het gereden interval, zodat losse uitgaven geen pieken geven.
+        </p>
+      </article>
+    }
   </section>
 
   <section>

@@ -38,6 +38,14 @@ import {
   percentageForAge,
   yearlyDepreciation,
 } from '../../../core/models/depreciation-templates';
+import {
+  Spreiding,
+  addMonths,
+  lineaireTrend,
+  perMaand,
+  spreidOnderhoud,
+  voortschrijdendPerKm,
+} from '../../../core/models/cost-per-km';
 
 type FuelEntryWithVerbruik = FuelEntry & {
   afstandKm: number | null;
@@ -203,7 +211,7 @@ export class VehicleDetail implements OnInit, OnDestroy {
    */
   readonly depreciationPayments = computed(() => {
     const v = this.vehicle();
-    const payments: { datum: string; bedrag: number }[] = [];
+    const payments: { datum: string; bedrag: number; correctie?: boolean }[] = [];
     if (!v) return payments;
     const vandaag = new Date().toISOString().slice(0, 10);
     const peildatum = v.verkoopdatum && v.verkoopdatum < vandaag ? v.verkoopdatum : vandaag;
@@ -212,7 +220,7 @@ export class VehicleDetail implements OnInit, OnDestroy {
       const restwaarde = v.restwaarde ?? 0;
       let waarde = v.aanschafprijs;
       for (let i = 1; waarde > restwaarde; i++) {
-        const datum = this.addMonths(v.aankoopdatum, i);
+        const datum = addMonths(v.aankoopdatum, i);
         if (datum > peildatum) break;
         const percentage = percentageForAge(tabel, Math.max(Number(datum.slice(0, 4)) - v.bouwjaar, 0));
         const bedrag = Math.min((waarde * percentage) / 100, waarde - restwaarde);
@@ -222,10 +230,96 @@ export class VehicleDetail implements OnInit, OnDestroy {
     }
     if (v.aanschafprijs != null && v.verkoopdatum && v.verkoopprijs != null) {
       const geboekt = payments.reduce((sum, payment) => sum + payment.bedrag, 0);
-      payments.push({ datum: v.verkoopdatum, bedrag: v.aanschafprijs - v.verkoopprijs - geboekt });
+      payments.push({ datum: v.verkoopdatum, bedrag: v.aanschafprijs - v.verkoopprijs - geboekt, correctie: true });
     }
     return payments;
   });
+  readonly costPerKmWindow = signal<6 | 12>(12);
+  /**
+   * Kosten per km als voortschrijdend gemiddelde met lineaire trend. Om pieken te voorkomen worden kosten over de
+   * periode verdeeld waarop ze betrekking hebben: tankbedrag en afstand over het interval sinds de vorige tankbeurt,
+   * vaste lasten over hun termijn, onderhoud tot de volgende beurt van hetzelfde type en het verkoopverschil over de
+   * bezitsperiode. De maanden lopen van de eerste t/m de laatste tankbeurt, want alleen daar is de afstand bekend.
+   */
+  readonly costPerKm = computed(() => {
+    const byOdometer = [...this.fuelEntries()].sort((a, b) => a.odometer - b.odometer);
+    const byDate = [...byOdometer].sort((a, b) => a.datum.localeCompare(b.datum));
+    if (byDate.length < 2) return null;
+
+    const km: Spreiding[] = [];
+    const overig: Spreiding[] = byOdometer.slice(0, 1).map((entry) => ({ van: entry.datum, tot: entry.datum, waarde: entry.bedrag }));
+    for (let i = 1; i < byOdometer.length; i++) {
+      const [vorige, entry] = [byOdometer[i - 1], byOdometer[i]];
+      km.push({ van: vorige.datum, tot: entry.datum, waarde: entry.odometer - vorige.odometer });
+      overig.push({ van: vorige.datum, tot: entry.datum, waarde: entry.bedrag });
+    }
+    overig.push(...spreidOnderhoud(this.maintenanceEntries()));
+    const termijnMaanden = { Maand: 1, Kwartaal: 3, Jaar: 12 };
+    const frequenties = new Map(this.recurringCosts().map((cost) => [cost.id, cost.frequentie]));
+    for (const payment of this.recurringPayments()) {
+      const maanden = termijnMaanden[frequenties.get(payment.costId) ?? 'Maand'];
+      overig.push({ van: payment.datum, tot: addMonths(payment.datum, maanden), waarde: payment.bedrag });
+    }
+    const aankoopdatum = this.vehicle()?.aankoopdatum;
+    const afschrijving: Spreiding[] = this.depreciationPayments().map((payment) => ({
+      van: payment.correctie && aankoopdatum ? aankoopdatum : payment.datum,
+      tot: payment.datum,
+      waarde: payment.bedrag,
+    }));
+
+    const maanden = this.periodRange([byDate[0].datum.slice(0, 7), byDate[byDate.length - 1].datum.slice(0, 7)], true);
+    const kmPerMaand = perMaand(km);
+    const overigPerMaand = perMaand(overig);
+    const totaalPerMaand = perMaand([...overig, ...afschrijving]);
+    const venster = this.costPerKmWindow();
+    const totaal = voortschrijdendPerKm(maanden, totaalPerMaand, kmPerMaand, venster);
+    const trend = lineaireTrend(totaal);
+    return {
+      maanden,
+      totaal,
+      zonderAfschrijving: afschrijving.length > 0 ? voortschrijdendPerKm(maanden, overigPerMaand, kmPerMaand, venster) : null,
+      trend: trend.waarden,
+      /** Verandering van de trend in EUR/km per jaar. */
+      trendPerJaar: trend.helling === null ? null : trend.helling * 12,
+      huidig: [...totaal].reverse().find((value) => value !== null) ?? null,
+    };
+  });
+  readonly costPerKmChartData = computed<ChartConfiguration<'line'>['data']>(() => {
+    const result = this.costPerKm();
+    if (!result) return { labels: [], datasets: [] };
+    const dataset = (label: string, data: (number | null)[], color: string, extra: object = {}) => ({
+      label,
+      data,
+      borderColor: color,
+      backgroundColor: `${color}26`,
+      fill: false,
+      tension: 0.25,
+      pointRadius: 0,
+      spanGaps: true,
+      ...extra,
+    });
+    return {
+      labels: result.maanden.map((key) => this.formatMonth(key)),
+      datasets: [
+        dataset(`Totaal (${this.costPerKmWindow()} mnd gemiddeld)`, result.totaal, '#0f766e', { fill: true }),
+        ...(result.zonderAfschrijving ? [dataset('Zonder afschrijving', result.zonderAfschrijving, '#d97706')] : []),
+        dataset('Trend totaal', result.trend, '#64748b', { borderDash: [6, 4], borderWidth: 2, tension: 0 }),
+      ],
+    };
+  });
+  readonly costPerKmChartOptions: ChartConfiguration<'line'>['options'] = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: { y: { ticks: { callback: (value) => `€ ${Number(value).toFixed(2)}` } } },
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: (context) => `${context.dataset.label}: € ${context.parsed.y?.toFixed(3) ?? '–'}/km`,
+        },
+      },
+    },
+  };
   readonly lineChartOptions: ChartConfiguration<'line'>['options'] = {
     responsive: true,
     maintainAspectRatio: false,
@@ -708,16 +802,6 @@ export class VehicleDetail implements OnInit, OnDestroy {
       }
     }
     return range;
-  }
-
-  /** Zelfde semantiek als DateOnly.AddMonths: een te grote dag wordt de laatste dag van de maand. */
-  private addMonths(date: string, months: number): string {
-    const [year, month, day] = date.split('-').map(Number);
-    const totalMonths = year * 12 + (month - 1) + months;
-    const targetYear = Math.floor(totalMonths / 12);
-    const targetMonth = (totalMonths % 12) + 1;
-    const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
-    return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}`;
   }
 
   private formatMonth(key: string): string {
